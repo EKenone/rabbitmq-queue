@@ -3,11 +3,7 @@ package rabbitmq
 import (
 	"context"
 	"errors"
-	"fmt"
-	"gitee.com/lingyiliebian/app_service/pkg/components/logger"
-	"github.com/asim/go-micro/v3/metadata"
 	"github.com/panjf2000/ants/v2"
-	"github.com/rs/xid"
 	"github.com/streadway/amqp"
 	"sync"
 )
@@ -97,19 +93,15 @@ func (q *Task) ListenQueue() {
 	cumCtx := context.Background()
 	mq, delivery, err := q.beforeListen(cumCtx)
 	if err != nil {
-		logger.ErrorCtx(cumCtx, fmt.Sprintf("[%s]队列获取delivery数据失败:%v", q.queueName, err))
 		return
 	}
 
 	closeChan, exit := make(chan *amqp.Error, 1), make(chan bool)
 	notifyClose := mq.Ch.NotifyClose(closeChan)
 
-	logger.InfoCtx(cumCtx, fmt.Sprintf("[%s]队列启动成功", q.queueName))
-
 	for {
 		select {
-		case e := <-notifyClose:
-			logger.ErrorCtx(cumCtx, fmt.Sprintf("[%s]队列异常关闭：%v", q.queueName, e))
+		case <-notifyClose:
 			_ = q.worker.Submit(q.ListenQueue)
 			exit <- true
 		case d, ok := <-delivery:
@@ -118,7 +110,6 @@ func (q *Task) ListenQueue() {
 					q.RunAction(d, q.queueName, q.action)
 				})
 			} else {
-				logger.ErrorCtx(cumCtx, fmt.Sprintf("[%s]获取数据失败，请排查原因，关闭当前消费者", q.queueName))
 				mq.Ch.Close()
 				return
 			}
@@ -132,7 +123,7 @@ func (q *Task) ListenQueue() {
 
 //执行操作
 func (q *Task) RunAction(diy amqp.Delivery, queueName string, fc Action) {
-	ctx := metadata.Set(context.Background(), "spanID", xid.New().String())
+	ctx := context.Background()
 	var err error
 	defer diy.Ack(false)
 	defer func() {
